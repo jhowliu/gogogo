@@ -81,7 +81,7 @@ func worker(jobs chan string, results chan string) chan struct{} {
 	return end
 }
 
-func tokenize(sentences []string, numOfWorkers int) chan string {
+func Tokenize(sentences []string, numOfWorkers int) chan string {
 	count := len(sentences)
 
 	var jobs chan string = make(chan string, count)
