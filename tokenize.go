@@ -1,4 +1,4 @@
-package main
+package service
 
 import (
 	"fmt"
@@ -81,23 +81,22 @@ func worker(jobs chan string, results chan string) chan struct{} {
 	return end
 }
 
-func main() {
-	sample := "今天吃牛排嗎"
-	numOfsamples := 2000
-	numOfWorkers := 100
-	var sentences chan string = make(chan string, numOfsamples)
-	var results chan string = make(chan string, numOfsamples)
+func tokenize(sentences []string, numOfWorkers int) chan string {
+	count := len(sentences)
 
-	for i := 0; i < numOfsamples; i++ {
-		sentences <- sample
+	var jobs chan string = make(chan string, count)
+	var results chan string = make(chan string, count)
+
+	for _, s := range sentences {
+		jobs <- s
 	}
-	close(sentences)
+	close(jobs)
 
 	fmt.Println("START TOKENIZING")
 	start_t := time.Now()
-	dispatcher(numOfWorkers, sentences, results)
+	dispatcher(numOfWorkers, jobs, results)
 	end_t := time.Now()
 
 	fmt.Println("Tokenize for", len(results), "sentences takes", end_t.Sub(start_t))
-
+	return results
 }
