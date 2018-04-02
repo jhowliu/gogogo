@@ -1,13 +1,15 @@
 package service
 
 import (
+	"encoding/json"
 	"fmt"
-	"io/ioutil"
 	"net/http"
 	"time"
-
-	"github.com/tidwall/gjson"
 )
+
+type Body struct {
+	Tokens []string `json:"segmentresult"`
+}
 
 func buildRequest(method, host, path string) *http.Request {
 	uri := host + path
@@ -25,8 +27,8 @@ func queryEncoded(req *http.Request, sentence string) *http.Request {
 	return req
 }
 
-func httpGet(sentence string) string {
-	var result string = "ERROR"
+func httpGet(sentence string) []string {
+	results := []string{}
 
 	req := buildRequest("GET", "http://192.168.10.108:3013", "/simplesegment")
 	req = queryEncoded(req, sentence)
@@ -40,14 +42,15 @@ func httpGet(sentence string) string {
 	defer response.Body.Close()
 
 	if response.StatusCode == 200 {
-		body, _ := ioutil.ReadAll(response.Body)
-		result = gjson.Get(string(body), "segmentresult").String()
+		var body Body
+		_ = json.NewDecoder(response.Body).Decode(&body)
+		results = body.Tokens
 	}
 
-	return result
+	return results
 }
 
-func dispatcher(numOfWorkers int, jobs chan string, results chan string) {
+func dispatcher(numOfWorkers int, jobs chan string, results chan []string) {
 	var workers []chan struct{} = make([]chan struct{}, numOfWorkers)
 
 	// running workers
@@ -64,7 +67,7 @@ func dispatcher(numOfWorkers int, jobs chan string, results chan string) {
 	close(results)
 }
 
-func worker(jobs chan string, results chan string) chan struct{} {
+func worker(jobs chan string, results chan []string) chan struct{} {
 	var end chan struct{} = make(chan struct{}, 1)
 	go func() {
 		for true {
@@ -81,22 +84,22 @@ func worker(jobs chan string, results chan string) chan struct{} {
 	return end
 }
 
-func Tokenize(sentences []string, numOfWorkers int) chan string {
+func Tokenize(sentences []string, numOfWorkers int) chan []string {
 	count := len(sentences)
 
 	var jobs chan string = make(chan string, count)
-	var results chan string = make(chan string, count)
+	var results chan []string = make(chan []string, count)
 
 	for _, s := range sentences {
 		jobs <- s
 	}
 	close(jobs)
 
-	fmt.Println("START TOKENIZING")
 	start_t := time.Now()
 	dispatcher(numOfWorkers, jobs, results)
 	end_t := time.Now()
 
 	fmt.Println("Tokenize for", len(results), "sentences takes", end_t.Sub(start_t))
+
 	return results
 }
