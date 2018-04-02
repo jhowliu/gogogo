@@ -5,6 +5,8 @@ import (
 	"io/ioutil"
 	"net/http"
 	"time"
+
+	"github.com/tidwall/gjson"
 )
 
 func buildRequest(method, host, path string) *http.Request {
@@ -23,111 +25,79 @@ func queryEncoded(req *http.Request, sentence string) *http.Request {
 	return req
 }
 
-func httpGet(sentence string, c chan string) {
-	var result string
-	var response *http.Response
+func httpGet(sentence string) string {
+	var result string = "ERROR"
 
-	req := buildRequest("GET", "https://lingbot-api.lingtelli.com", "/segment/simplesegment")
+	req := buildRequest("GET", "http://192.168.10.108:3013", "/simplesegment")
 	req = queryEncoded(req, sentence)
 
 	response, err := http.DefaultClient.Do(req)
 
 	if err != nil {
-		fmt.Println("ERROR")
-		result = "ERROR"
+		fmt.Println(err)
 	}
+
 	defer response.Body.Close()
 
 	if response.StatusCode == 200 {
 		body, _ := ioutil.ReadAll(response.Body)
-		result = string(body)
-	} else {
-		result = "ERROR"
+		result = gjson.Get(string(body), "segmentresult").String()
 	}
-	c <- string(result)
+
+	return result
 }
 
-func asyncHttpGet(sentences []string) []string {
-	responses := []string{}
+func dispatcher(numOfWorkers int, jobs chan string, results chan string) {
+	var workers []chan struct{} = make([]chan struct{}, numOfWorkers)
 
-	ch := make(chan string, len(sentences))
-
-	for _, s := range sentences {
-		go httpGet(s, ch)
+	// running workers
+	for i := 0; i < numOfWorkers; i++ {
+		workers[i] = worker(jobs, results)
 	}
 
-	for {
-		select {
-		case body := <-ch:
-			responses = append(responses, body)
-			if len(responses) == len(sentences) {
-				return responses
+	// wait for workers finished
+	for i := 0; i < numOfWorkers; i++ {
+		<-workers[i]
+		fmt.Printf("Worker %d finished\n", i)
+	}
+
+	close(results)
+}
+
+func worker(jobs chan string, results chan string) chan struct{} {
+	var end chan struct{} = make(chan struct{}, 1)
+	go func() {
+		for true {
+			job, ok := <-jobs
+			if !ok {
+				break
 			}
+
+			results <- httpGet(job)
 		}
-	}
+		end <- struct{}{}
+	}()
+
+	return end
 }
 
 func main() {
-	sentences := []string{
-		"今天吃牛排嗎",
-		"今天吃牛排嗎",
-		"今天吃牛排嗎",
-		"今天吃牛排嗎",
-		"今天吃牛排嗎",
-		"今天吃牛排嗎",
-		"今天吃牛排嗎",
-		"今天吃牛排嗎",
-		"今天吃牛排嗎",
-		"今天吃牛排嗎",
-		"今天吃牛排嗎",
-		"今天吃牛排嗎",
-		"今天吃牛排嗎",
-		"今天吃牛排嗎",
-		"今天吃牛排嗎",
-		"今天吃牛排嗎",
-		"今天吃牛排嗎",
-		"今天吃牛排嗎",
-		"今天吃牛排嗎",
-		"今天吃牛排嗎",
-		"今天吃牛排嗎",
-		"今天吃牛排嗎",
-		"今天吃牛排嗎",
-		"今天吃牛排嗎",
-		"今天吃牛排嗎",
-		"今天吃牛排嗎",
-		"今天吃牛排嗎",
-		"今天吃牛排嗎",
-		"今天吃牛排嗎",
-		"今天吃牛排嗎",
-		"今天吃牛排嗎",
-		"今天吃牛排嗎",
-		"今天吃牛排嗎",
-		"今天吃牛排嗎",
-		"今天吃牛排嗎",
-		"今天吃牛排嗎",
-		"今天吃牛排嗎",
-		"今天吃牛排嗎",
-		"今天吃牛排嗎",
-		"今天吃牛排嗎",
-		"今天吃牛排嗎",
-		"今天吃牛排嗎",
-		"今天吃牛排嗎",
-		"今天吃牛排嗎",
-		"今天吃牛排嗎",
-		"今天吃牛排嗎",
-		"今天吃牛排嗎",
-		"今天吃牛排嗎",
-		"今天吃牛排嗎",
-		"今天吃牛排嗎",
+	sample := "今天吃牛排嗎"
+	numOfsamples := 2000
+	numOfWorkers := 100
+	var sentences chan string = make(chan string, numOfsamples)
+	var results chan string = make(chan string, numOfsamples)
+
+	for i := 0; i < numOfsamples; i++ {
+		sentences <- sample
 	}
+	close(sentences)
+
 	fmt.Println("START TOKENIZING")
 	start_t := time.Now()
-	results := asyncHttpGet(sentences)
+	dispatcher(numOfWorkers, sentences, results)
 	end_t := time.Now()
 
-	for _, ele := range results {
-		fmt.Println(ele)
-	}
-
 	fmt.Println("Tokenize for", len(results), "sentences takes", end_t.Sub(start_t))
+
 }
