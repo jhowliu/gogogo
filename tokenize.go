@@ -1,4 +1,4 @@
-package tokenize
+package service
 
 import (
 	"encoding/json"
