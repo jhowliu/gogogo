@@ -1,4 +1,4 @@
-package service
+package tokenize
 
 import (
 	"encoding/json"
@@ -27,10 +27,17 @@ func queryEncoded(req *http.Request, sentence string) *http.Request {
 	return req
 }
 
-func httpGet(sentence string) []string {
+func tokenize(language string, sentence string) []string {
 	results := []string{}
 
-	req := buildRequest("GET", "http://192.168.10.108:3013", "/simplesegment")
+	var req *http.Request
+
+	if language == "tw" {
+		req = buildRequest("GET", "http://192.168.10.108:3013", "/simplesegment")
+	} else {
+		req = buildRequest("GET", "http://192.168.10.108:3008", "/simplesegment")
+	}
+
 	req = queryEncoded(req, sentence)
 
 	response, err := http.DefaultClient.Do(req)
@@ -50,12 +57,12 @@ func httpGet(sentence string) []string {
 	return results
 }
 
-func dispatcher(numOfWorkers int, jobs chan string, results chan []string) {
+func dispatcher(language string, numOfWorkers int, jobs chan string, results chan []string) {
 	var workers []chan struct{} = make([]chan struct{}, numOfWorkers)
 
 	// running workers
 	for i := 0; i < numOfWorkers; i++ {
-		workers[i] = worker(jobs, results)
+		workers[i] = worker(language, jobs, results)
 	}
 
 	// wait for workers finished
@@ -67,7 +74,7 @@ func dispatcher(numOfWorkers int, jobs chan string, results chan []string) {
 	close(results)
 }
 
-func worker(jobs chan string, results chan []string) chan struct{} {
+func worker(language string, jobs chan string, results chan []string) chan struct{} {
 	var end chan struct{} = make(chan struct{}, 1)
 	go func() {
 		for true {
@@ -76,7 +83,7 @@ func worker(jobs chan string, results chan []string) chan struct{} {
 				break
 			}
 
-			results <- httpGet(job)
+			results <- tokenize(language, job)
 		}
 		end <- struct{}{}
 	}()
@@ -84,7 +91,7 @@ func worker(jobs chan string, results chan []string) chan struct{} {
 	return end
 }
 
-func Tokenize(sentences []string, numOfWorkers int) chan []string {
+func Tokenize(sentences []string, language string, numOfWorkers int) chan []string {
 	count := len(sentences)
 
 	var jobs chan string = make(chan string, count)
@@ -96,7 +103,7 @@ func Tokenize(sentences []string, numOfWorkers int) chan []string {
 	close(jobs)
 
 	start_t := time.Now()
-	dispatcher(numOfWorkers, jobs, results)
+	dispatcher(language, numOfWorkers, jobs, results)
 	end_t := time.Now()
 
 	fmt.Println("Tokenize for", len(results), "sentences takes", end_t.Sub(start_t))
