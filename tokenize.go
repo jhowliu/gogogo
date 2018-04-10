@@ -33,9 +33,9 @@ func tokenize(language string, sentence string) []string {
 	var req *http.Request
 
 	if language == "tw" {
-		req = buildRequest("GET", "http://192.168.10.108:3013", "/simplesegment")
+		req = buildRequest("GET", "http://localhost:3013", "/simplesegment")
 	} else {
-		req = buildRequest("GET", "http://192.168.10.108:3008", "/simplesegment")
+		req = buildRequest("GET", "http://localhost:3008", "/simplesegment")
 	}
 
 	req = queryEncoded(req, sentence)
