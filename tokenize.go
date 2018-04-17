@@ -54,7 +54,6 @@ func tokenize(language string, job *Job) {
 	if response.StatusCode == 200 {
 		var body Body
 		_ = json.NewDecoder(response.Body).Decode(&body)
-		fmt.Println(body.Tokens)
 		job.Tokens = body.Tokens
 	}
 }
