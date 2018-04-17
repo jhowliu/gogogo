@@ -11,6 +11,11 @@ type Body struct {
 	Tokens []string `json:"segmentresult"`
 }
 
+type Job struct {
+	Sentence string
+	Tokens   []string
+}
+
 func buildRequest(method, host, path string) *http.Request {
 	uri := host + path
 	req, _ := http.NewRequest(method, uri, nil)
@@ -27,18 +32,16 @@ func queryEncoded(req *http.Request, sentence string) *http.Request {
 	return req
 }
 
-func tokenize(language string, sentence string) []string {
-	results := []string{}
-
+func tokenize(language string, job *Job) {
 	var req *http.Request
 
 	if language == "tw" {
-		req = buildRequest("GET", "http://localhost:3013", "/simplesegment")
+		req = buildRequest("GET", "http://192.168.10.108:3013", "/simplesegment")
 	} else {
 		req = buildRequest("GET", "http://localhost:3008", "/simplesegment")
 	}
 
-	req = queryEncoded(req, sentence)
+	req = queryEncoded(req, job.Sentence)
 
 	response, err := http.DefaultClient.Do(req)
 
@@ -51,18 +54,17 @@ func tokenize(language string, sentence string) []string {
 	if response.StatusCode == 200 {
 		var body Body
 		_ = json.NewDecoder(response.Body).Decode(&body)
-		results = body.Tokens
+		fmt.Println(body.Tokens)
+		job.Tokens = body.Tokens
 	}
-
-	return results
 }
 
-func dispatcher(language string, numOfWorkers int, jobs chan string, results chan []string) {
+func dispatcher(language string, numOfWorkers int, jobs chan *Job) {
 	var workers []chan struct{} = make([]chan struct{}, numOfWorkers)
 
 	// running workers
 	for i := 0; i < numOfWorkers; i++ {
-		workers[i] = worker(language, jobs, results)
+		workers[i] = worker(language, jobs)
 	}
 
 	// wait for workers finished
@@ -70,11 +72,9 @@ func dispatcher(language string, numOfWorkers int, jobs chan string, results cha
 		<-workers[i]
 		fmt.Printf("Worker %d finished\n", i)
 	}
-
-	close(results)
 }
 
-func worker(language string, jobs chan string, results chan []string) chan struct{} {
+func worker(language string, jobs chan *Job) chan struct{} {
 	var end chan struct{} = make(chan struct{}, 1)
 	go func() {
 		for true {
@@ -83,7 +83,7 @@ func worker(language string, jobs chan string, results chan []string) chan struc
 				break
 			}
 
-			results <- tokenize(language, job)
+			tokenize(language, job)
 		}
 		end <- struct{}{}
 	}()
@@ -91,22 +91,32 @@ func worker(language string, jobs chan string, results chan []string) chan struc
 	return end
 }
 
-func Tokenize(sentences []string, language string, numOfWorkers int) chan []string {
+func Tokenize(sentences []string, language string, numOfWorkers int) [][]string {
 	count := len(sentences)
 
-	var jobs chan string = make(chan string, count)
-	var results chan []string = make(chan []string, count)
+	var jobs []Job
+	var results [][]string
+	var jobChannel chan *Job = make(chan *Job, count)
 
 	for _, s := range sentences {
-		jobs <- s
+		jobs = append(jobs, Job{Sentence: s})
 	}
-	close(jobs)
+
+	for i, _ := range jobs {
+		jobChannel <- &jobs[i]
+	}
+
+	close(jobChannel)
 
 	start_t := time.Now()
-	dispatcher(language, numOfWorkers, jobs, results)
+	dispatcher(language, numOfWorkers, jobChannel)
 	end_t := time.Now()
 
-	fmt.Println("Tokenize for", len(results), "sentences takes", end_t.Sub(start_t))
+	fmt.Println("Tokenize for", count, "sentences takes", end_t.Sub(start_t))
+
+	for _, job := range jobs {
+		results = append(results, job.Tokens)
+	}
 
 	return results
 }
