@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"os"
 	"time"
 )
 
@@ -35,10 +36,13 @@ func queryEncoded(req *http.Request, sentence string) *http.Request {
 func tokenize(language string, job *Job) {
 	var req *http.Request
 
+	twTokenizerHost := os.Getenv("TW_TOKENIZER_HOST")
+	cnTokenizerHost := os.Getenv("CN_TOKENIZER_HOST")
+
 	if language == "tw" {
-		req = buildRequest("GET", "http://localhost:3013", "/simplesegment")
+		req = buildRequest("GET", twTokenizerHost, "/simplesegment")
 	} else {
-		req = buildRequest("GET", "http://localhost:3008", "/simplesegment")
+		req = buildRequest("GET", cnTokenizerHost, "/simplesegment")
 	}
 
 	req = queryEncoded(req, job.Sentence)
